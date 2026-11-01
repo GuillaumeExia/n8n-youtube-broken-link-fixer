@@ -1,0 +1,2003 @@
+{
+  "name": "Find and fix broken links in YouTube descriptions and comments with Slack approval",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "6d05daab-3281-49cd-bdba-c11199a5337e",
+      "name": "Every Monday 8am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-playlist",
+              "name": "uploadsPlaylistId",
+              "value": "UUxxxxxxxxxxxxxxxxxxxxxx",
+              "type": "string"
+            },
+            {
+              "id": "cfg-sender",
+              "name": "senderEmail",
+              "value": "Link Checker <alerts@example.com>",
+              "type": "string"
+            },
+            {
+              "id": "cfg-email",
+              "name": "alertEmail",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg-slack",
+              "name": "slackChannelId",
+              "value": "C0123456789",
+              "type": "string"
+            },
+            {
+              "id": "cfg-phrases",
+              "name": "softErrorPhrases",
+              "value": "404, not found, no longer available, currently unavailable, discontinued, does not exist",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "589b36b2-4820-4e8a-a2e5-d632798b0c14",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YouTube Link Issues"
+        },
+        "returnAll": true
+      },
+      "id": "a2fcb87a-620d-4d5c-9460-78c7e6e763ed",
+      "name": "Load Known Links",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        384
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "playlistItem",
+        "operation": "getAll",
+        "playlistId": "={{ $('Configuration').first().json.uploadsPlaylistId }}",
+        "part": [
+          "snippet",
+          "contentDetails"
+        ],
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "fa582253-ce80-4fa8-9f00-8289e8308836",
+      "name": "List Channel Uploads",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        672,
+        384
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "credential-id",
+          "name": "YouTube account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "occ",
+              "name": "occurrence",
+              "value": "={{ { type: \"description\", videoId: $json.contentDetails.videoId, title: $json.snippet.title, placeUrl: \"https://youtu.be/\" + $json.contentDetails.videoId, commentId: \"\" } }}",
+              "type": "object"
+            },
+            {
+              "id": "links",
+              "name": "links",
+              "value": "={{ (($json.snippet.description || \"\").match(/https?:\\/\\/[^\\s<>\"'\\[\\]]+/g) || []).map(u => { u = u.replace(/[.,;:!?]+$/, \"\"); while (u.endsWith(\")\") && u.split(\")\").length > u.split(\"(\").length) u = u.slice(0, -1).replace(/[.,;:!?]+$/, \"\"); return u; }).filter((u, i, a) => a.indexOf(u) === i) }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b85cf110-5a46-48b5-8874-83d0ef2ecaf1",
+      "name": "Extract Description Links",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1344,
+        288
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d2e69ddc-8bb2-466d-884a-80f5e07ba173",
+      "name": "Merge Link Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1568,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/commentThreads",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet"
+            },
+            {
+              "name": "videoId",
+              "value": "={{ $json.contentDetails.videoId }}"
+            },
+            {
+              "name": "maxResults",
+              "value": "100"
+            },
+            {
+              "name": "order",
+              "value": "relevance"
+            },
+            {
+              "name": "textFormat",
+              "value": "plainText"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 10
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "682b91e1-b087-4bf2-96da-6e4f4974a349",
+      "name": "Get Channel Comments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        896,
+        480
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "credential-id",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "owner",
+              "name": "ownerComments",
+              "value": "={{ ($json.items || []).filter(t => t.snippet?.topLevelComment?.snippet?.authorChannelId?.value === t.snippet?.channelId).map(t => ({ occurrence: { type: \"comment\", videoId: t.snippet.videoId, title: $('List Channel Uploads').item.json.snippet.title, placeUrl: \"https://www.youtube.com/watch?v=\" + t.snippet.videoId + \"&lc=\" + t.snippet.topLevelComment.id, commentId: t.snippet.topLevelComment.id }, links: ((t.snippet.topLevelComment.snippet.textOriginal || t.snippet.topLevelComment.snippet.textDisplay || \"\").match(/https?:\\/\\/[^\\s<>\"'\\[\\]]+/g) || []).map(u => { u = u.replace(/[.,;:!?]+$/, \"\"); while (u.endsWith(\")\") && u.split(\")\").length > u.split(\"(\").length) u = u.slice(0, -1).replace(/[.,;:!?]+$/, \"\"); return u; }).filter((u, i, a) => a.indexOf(u) === i) })).filter(c => c.links.length > 0) }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "45cf85ae-c9db-4a28-aba2-3c955c69dd04",
+      "name": "Extract Comment Links",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1120,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "ownerComments",
+        "options": {}
+      },
+      "id": "8be0ed24-39c4-4e35-896a-c5d7569e7240",
+      "name": "One Item per Comment",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "links",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "occurrence",
+        "options": {
+          "destinationFieldName": "url"
+        }
+      },
+      "id": "9f009892-b5df-459e-8702-6960a8eacad4",
+      "name": "One Item per Link",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "append",
+              "field": "occurrence"
+            }
+          ]
+        },
+        "fieldsToSplitBy": "url",
+        "options": {}
+      },
+      "id": "386d008f-3e6c-49fd-9921-db911451866d",
+      "name": "Group Places by URL",
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        2016,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 500
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 10
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "4577adb7-f696-4de5-9a9c-4e53e1cfa1f6",
+      "name": "Check Link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2240,
+        384
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "url",
+              "name": "url",
+              "value": "={{ $('Group Places by URL').item.json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "occ",
+              "name": "occurrences",
+              "value": "={{ $('Group Places by URL').item.json.appended_occurrence }}",
+              "type": "array"
+            },
+            {
+              "id": "check",
+              "name": "check",
+              "value": "={{ (() => {\nconst cfg = $('Configuration').first().json;\nconst url = $('Group Places by URL').item.json.url;\nconst code = $json.statusCode;\nif ($json.error || !code) {\n  const e = typeof $json.error === \"string\" ? $json.error : JSON.stringify($json.error ?? \"\");\n  const reason = /ENOTFOUND|EAI_AGAIN/.test(e) ? \"Domain not found\" : /ETIMEDOUT|ECONNABORTED|timeout/i.test(e) ? \"Timed out\" : /ECONNREFUSED/.test(e) ? \"Connection refused\" : /ECONNRESET|socket hang up/i.test(e) ? \"Connection reset\" : /CERT|SSL|self.signed/i.test(e) ? \"SSL certificate error\" : \"Unreachable\";\n  return { severity: \"broken\", reason: reason };\n}\nconst labels = { 400: \"Bad request\", 401: \"Unauthorized\", 403: \"Forbidden\", 404: \"Not found\", 410: \"Gone\", 429: \"Too many requests\", 500: \"Server error\", 502: \"Bad gateway\", 503: \"Service unavailable\", 504: \"Gateway timeout\", 999: \"Blocked\" };\nconst label = (code + \" \" + (labels[code] || (code >= 500 ? \"Server error\" : \"\"))).trim();\nif ([401, 403, 429, 503, 999].includes(code)) return { severity: \"verify\", reason: label };\nif (code >= 400) return { severity: \"broken\", reason: label };\nconst body = String($json.body ?? $json.data ?? \"\").slice(0, 500000);\nconst clean = s => s.replace(/<[^>]+>/g, \" \").replace(/\\s+/g, \" \").trim().toLowerCase();\nconst headings = (body.match(/<(title|h1|h2)[^>]*>[\\s\\S]*?<\\/(title|h1|h2)>/gi) || []).map(clean);\nconst phrases = String(cfg.softErrorPhrases || \"\").split(\",\").map(p => p.trim().toLowerCase()).filter(Boolean);\nconst hit = headings.map(h => phrases.find(p => h.includes(p))).find(Boolean);\nif (hit) return { severity: \"broken\", reason: \"Soft 404: page says “\" + hit + \"”\" };\nconst path = u => u.replace(/^(https?:)?\\/\\/[^\\/]+/i, \"\").replace(/[?#].*$/, \"\").replace(/\\/+$/, \"\");\nconst canonicalTag = (body.match(/<link[^>]+rel=[\"']canonical[\"'][^>]*>/i) || [\"\"])[0];\nconst canonical = (canonicalTag.match(/href=[\"']([^\"']+)[\"']/i) || [])[1];\nif (canonical && path(url) !== \"\" && path(canonical) === \"\") return { severity: \"broken\", reason: \"Redirects to the homepage\" };\nreturn { severity: \"ok\", reason: label };\n})() }}",
+              "type": "object"
+            },
+            {
+              "id": "known",
+              "name": "knownStatus",
+              "value": "={{ ($('Load Known Links').all().map(i => i.json).find(r => r.url === $('Group Places by URL').item.json.url) || {}).status || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "new",
+              "name": "isNew",
+              "value": "={{ ![\"open\", \"ignored\"].includes(($('Load Known Links').all().map(i => i.json).find(r => r.url === $('Group Places by URL').item.json.url) || {}).status) }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "573e2b8d-9212-42d0-8e04-7fa94b148154",
+      "name": "Classify Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2464,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.check.severity }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ok"
+                  },
+                  {
+                    "leftValue": "={{ $json.knownStatus }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(open|verify)$"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Recovered"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.check.severity }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "rightValue": "ok"
+                  },
+                  {
+                    "leftValue": "={{ $json.isNew }}",
+                    "operator": {
+                      "operation": "true",
+                      "singleValue": true,
+                      "type": "boolean"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "New issue"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.check.severity }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "rightValue": "ok"
+                  },
+                  {
+                    "leftValue": "={{ $json.knownStatus }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "rightValue": "ignored"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Report"
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": true
+        }
+      },
+      "id": "33560d35-130e-4614-8808-609fa6b91b07",
+      "name": "Route Results",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2688,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YouTube Link Issues"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "fixed"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c0f49f4f-9e47-4163-aacb-c75344c9cc0c",
+      "name": "Mark as Fixed",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2912,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "url"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1d14ba17-bc2e-4dfd-bf58-d16fc2074aeb",
+      "name": "Collect Recovered Links",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Configuration').first().json.slackChannelId }}"
+        },
+        "text": "={{ (() => {\nconst { url } = $json;\nreturn \":white_check_mark: \" + url.length + (url.length === 1 ? \" link works again:\\n\" : \" links work again:\\n\") + url.map(u => \"• <\" + u + \">\").join(\"\\n\");\n})() }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "unfurl_links": false
+        }
+      },
+      "id": "c2a4f102-74ec-40ca-b031-aa5f21c9189c",
+      "name": "Announce Recovered Links",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        3136,
+        176
+      ],
+      "webhookId": "142eeb90-4f29-47ba-8e40-ea9d323440e2",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "credential-id",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YouTube Link Issues"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "url": "={{ $json.url }}",
+            "status": "={{ $json.check.severity === \"verify\" ? \"verify\" : \"open\" }}",
+            "reason": "={{ $json.check.reason }}",
+            "replacement": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "replacement",
+              "displayName": "replacement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b0436f68-b841-4b83-9b35-4090e3e84e99",
+      "name": "Record Issue",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2912,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.check.severity }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "broken"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da7bfac8-2be2-4233-baac-cc86d0ca156a",
+      "name": "Only Broken Links",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        2912,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "url",
+              "name": "url",
+              "type": "string",
+              "value": "={{ $json.url }}"
+            },
+            {
+              "id": "reason",
+              "name": "reason",
+              "type": "string",
+              "value": "={{ $json.check.reason }}"
+            },
+            {
+              "id": "occ",
+              "name": "occurrences",
+              "type": "array",
+              "value": "={{ $json.occurrences }}"
+            },
+            {
+              "id": "slack",
+              "name": "slackChannelId",
+              "type": "string",
+              "value": "={{ $('Configuration').first().json.slackChannelId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "93fc5803-7b7e-4097-8f63-f6c495a6f1f2",
+      "name": "Prepare Fix Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        3136,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "bef258fc-b5dc-4449-baca-aa460b71a08a",
+      "name": "Start Fix Request",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3360,
+        640
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "issues",
+        "options": {}
+      },
+      "id": "ba65d08a-8de4-4c04-b2a0-817bb38437d5",
+      "name": "Collect Open Issues",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "subject",
+              "name": "subject",
+              "value": "={{ \"YouTube Link Check: \" + $json.issues.filter(i => i.check.severity === \"broken\").length + \" broken, \" + $json.issues.filter(i => i.check.severity === \"verify\").length + \" to verify\" }}",
+              "type": "string"
+            },
+            {
+              "id": "html",
+              "name": "html",
+              "value": "={{ (() => {\nconst esc = s => String(s ?? \"\").replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\").replace(/'/g, \"&#39;\");\nconst isFresh = i => i.isNew && !(i.knownStatus === \"verify\" && i.check.severity === \"verify\");\nconst issues = $json.issues.slice().sort((a, b) => (a.check.severity === \"broken\" ? 0 : 1) - (b.check.severity === \"broken\" ? 0 : 1) || (isFresh(a) ? 0 : 1) - (isFresh(b) ? 0 : 1));\nconst broken = issues.filter(i => i.check.severity === \"broken\").length;\nconst fresh = issues.filter(isFresh).length;\nconst freshBroken = issues.filter(i => i.check.severity === \"broken\" && isFresh(i)).length;\nconst callout = broken === 0 ? \"\" : \"<div style='margin:0 0 16px;padding:12px 16px;border-radius:6px;background:#E6F1FB;color:#0C3B66;font-size:14px;line-height:1.5;'><strong>Fix these links from Slack.</strong> \" + (freshBroken > 0 ? \"Each new broken link was just sent to your Slack channel. Click <strong>Fix this link</strong>, then paste the new URL to replace it in every description and comment where it appears.\" : \"Their fix requests were sent to your Slack channel in earlier weeks. Answer them there to replace the links.\") + \"</div>\";\nconst pill = (text, bg, fg) => \"<span style='display:inline-block;padding:2px 8px;border-radius:4px;background:\" + bg + \";color:\" + fg + \";font-size:12px;font-weight:bold;'>\" + text + \"</span> \";\nconst rows = issues.map(i => \"<tr><td style='padding:16px 0;border-top:1px solid #E5E5E5;'>\" + (i.check.severity === \"broken\" ? pill(\"Broken\", \"#FCEBEB\", \"#A32D2D\") : pill(\"To verify\", \"#FAEEDA\", \"#854F0B\")) + (isFresh(i) ? pill(\"New\", \"#E6F1FB\", \"#185FA5\") : \"\") + \"<span style='color:#666666;font-size:13px;'>\" + esc(i.check.reason) + \"</span><div style='margin:8px 0;word-break:break-all;'><a href='\" + esc(i.url) + \"' style='color:#185FA5;'>\" + esc(i.url) + \"</a></div><div style='font-size:13px;color:#666666;'>Found in \" + i.occurrences.length + (i.occurrences.length === 1 ? \" place:\" : \" places:\") + \"</div><ul style='margin:4px 0 0;padding-left:18px;'>\" + i.occurrences.map(o => \"<li style='margin:2px 0;'>\" + (o.type === \"comment\" ? \"Your comment on \" : \"Description of \") + \"<a href='\" + esc(o.placeUrl) + \"' style='color:#185FA5;'>\" + esc(o.title) + \"</a></li>\").join(\"\") + \"</ul>\" + (i.check.severity === \"broken\" && isFresh(i) ? \"<div style='margin:6px 0 0;font-size:12px;color:#888888;'>Fix request sent to Slack</div>\" : \"\") + \"</td></tr>\").join(\"\");\nreturn \"<div style='background:#F5F5F5;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:8px;'><tr><td style='padding:24px;'><h1 style='margin:0 0 4px;font-size:20px;color:#111111;'>YouTube Link Check</h1><p style='margin:0 0 8px;font-size:14px;color:#666666;'>\" + $now.toFormat(\"d LLL yyyy\") + \" · \" + broken + \" broken, \" + (issues.length - broken) + \" to verify, \" + fresh + \" new this week</p>\" + callout + \"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='font-size:14px;color:#111111;'>\" + rows + \"</table><p style='margin:16px 0 0;padding-top:16px;border-top:1px solid #E5E5E5;font-size:12px;color:#888888;line-height:1.5;'>Broken: page missing, server error, unreachable domain, error page or redirect to the homepage. To verify: the site blocked the automated check, so open the link manually.</p></td></tr></table></div>\";\n})() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f1cfb290-69ed-4f9d-892f-7ce71d1b5b10",
+      "name": "Build Report Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        3136,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Configuration').first().json.senderEmail }}",
+        "toEmail": "={{ $('Configuration').first().json.alertEmail }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "5598fe34-7eb5-4b73-9d5d-5db767fcf099",
+      "name": "Send Weekly Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3360,
+        880
+      ],
+      "webhookId": "9a44a9d0-707d-4afe-8538-6aea63adc537",
+      "credentials": {
+        "smtp": {
+          "id": "credential-id",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "d29199e6-195c-40b0-a263-374f245df59d",
+      "name": "When Fix Is Requested",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "sendAndWait",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.slackChannelId }}"
+        },
+        "message": "={{ (() => {\nconst s = t => String(t ?? \"\").replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\").replace(/\\|/g, \"-\");\nconst places = $json.occurrences.map(o => \"• \" + (o.type === \"comment\" ? \"Your comment on \" : \"Description of \") + \"<\" + o.placeUrl + \"|\" + s(o.title) + \">\").join(\"\\n\");\nreturn \":x: *Broken link in your YouTube content* (\" + $json.reason + \")\\n<\" + $json.url + \">\\n\\n*Found in:*\\n\" + places + \"\\n\\nClick *Fix this link* below, then choose *Replace link* and paste the new URL to rewrite it everywhere it appears, or *Ignore this link* to stop alerts for it.\";\n})() }}",
+        "responseType": "customForm",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Action",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Replace link"
+                  },
+                  {
+                    "option": "Ignore this link"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Replacement URL",
+              "placeholder": "https://example.com/new-page"
+            }
+          ]
+        },
+        "options": {
+          "messageButtonLabel": "Fix this link",
+          "responseFormTitle": "Fix broken link",
+          "responseFormDescription": "=Broken link: {{ $json.url }}",
+          "responseFormButtonLabel": "Submit",
+          "limitWaitTime": {
+            "values": {
+              "resumeAmount": 7,
+              "resumeUnit": "days"
+            }
+          },
+          "appendAttribution": false
+        }
+      },
+      "id": "56e689d8-916d-4636-b48b-039be218b628",
+      "name": "Ask for Fix in Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        1184
+      ],
+      "webhookId": "966a3479-3680-4c04-b6c6-cf8f6f927621",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "credential-id",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data?.Action ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "Replace link"
+                  },
+                  {
+                    "leftValue": "={{ ($json.data?.[\"Replacement URL\"] ?? \"\").trim() }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "regex"
+                    },
+                    "rightValue": "^https?://"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Replace"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data?.Action ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "Ignore this link"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Ignore"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Ask again"
+        }
+      },
+      "id": "e06b5749-b47d-4538-88c2-809d5593e506",
+      "name": "Route Decision",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "occ",
+              "name": "occurrences",
+              "value": "={{ $('When Fix Is Requested').first().json.occurrences }}",
+              "type": "array"
+            },
+            {
+              "id": "old",
+              "name": "oldUrl",
+              "value": "={{ $('When Fix Is Requested').first().json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "new",
+              "name": "newUrl",
+              "value": "={{ $json.data[\"Replacement URL\"].trim() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f39e7e03-1094-4432-847e-de75b4d5a4c3",
+      "name": "Prepare Replacements",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        896,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "occurrences",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "oldUrl, newUrl",
+        "options": {
+          "destinationFieldName": "place"
+        }
+      },
+      "id": "4fe5ec33-6e55-4d82-ad0b-2418263c639c",
+      "name": "One Item per Place",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.place.type }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "description"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ddc92355-1092-4c2b-8368-c54866982025",
+      "name": "Description or Comment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "get",
+        "videoId": "={{ $json.place.videoId }}",
+        "part": [
+          "snippet"
+        ],
+        "options": {}
+      },
+      "id": "d65637df-9ee4-4c6f-a7ea-a3881eb6cc61",
+      "name": "Get Video Details",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        992
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "credential-id",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://www.googleapis.com/youtube/v3/videos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $json.id, snippet: { title: $json.snippet.title, categoryId: $json.snippet.categoryId, description: $json.newDescription, tags: $json.snippet.tags, defaultLanguage: $json.snippet.defaultLanguage } }) }}",
+        "options": {}
+      },
+      "id": "0a8a03b7-0cbc-414e-a76d-da0e722ca140",
+      "name": "Update Video Description",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2016,
+        992
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "credential-id",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "bb362d34-5489-427e-8926-5772b7bd69ef",
+      "name": "Merge Update Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2240,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.place.commentId }}"
+            },
+            {
+              "name": "textFormat",
+              "value": "plainText"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bbaf3978-ddc7-4457-b7a9-d816f4558616",
+      "name": "Get Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1568,
+        1184
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "credential-id",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://www.googleapis.com/youtube/v3/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $json.commentId, snippet: { textOriginal: $json.newText } }) }}",
+        "options": {}
+      },
+      "id": "041675e2-709e-441c-b33e-735ccf7d4edc",
+      "name": "Update Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2016,
+        1184
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "credential-id",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YouTube Link Issues"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $('When Fix Is Requested').first().json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "ignored"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8d1144cc-5609-413b-916d-3bd0831cb548",
+      "name": "Mark as Ignored",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        1280
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "options": {}
+      },
+      "id": "a89bc3be-757a-422e-a518-5c6b7e348134",
+      "name": "Summarize Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YouTube Link Issues"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $('When Fix Is Requested').first().json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.results.some(r => r.error) ? \"open\" : \"fixed\" }}",
+            "replacement": "={{ $('Prepare Replacements').first().json.newUrl }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "replacement",
+              "displayName": "replacement",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5811c7bc-225a-4622-ab11-acb39d123c31",
+      "name": "Record Fix",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2688,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('When Fix Is Requested').first().json.slackChannelId }}"
+        },
+        "text": "={{ (() => {\nconst { results } = $json;\nconst total = results.length;\nconst failed = results.filter(r => r.error).length;\nconst p = $('Prepare Replacements').first().json;\nreturn failed === 0 ? \":white_check_mark: Replaced <\" + p.oldUrl + \"> with <\" + p.newUrl + \"> in \" + total + (total === 1 ? \" place.\" : \" places.\") : \":warning: Replaced <\" + p.oldUrl + \"> in \" + (total - failed) + \" of \" + total + \" places. Check the failed updates in the execution log.\";\n})() }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "unfurl_links": false
+        }
+      },
+      "id": "f24687c8-bf03-41d6-bb94-f79b4ec84105",
+      "name": "Confirm Fix in Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        2688,
+        1184
+      ],
+      "webhookId": "016bbffa-58f2-415d-b2e8-a3704301d79e",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "credential-id",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Find and fix broken links in YouTube descriptions and comments\n\nDead affiliate links, expired discount codes and moved pages under old videos quietly cost creators clicks and revenue. This workflow finds them every week and lets you fix them from Slack without opening YouTube Studio.\n\n### How it works\n1. Every Monday it lists every video and Short on your channel and reads each description plus the comments you posted yourself.\n2. Each unique link is checked once. Besides 404s and dead domains, it catches **soft 404s** (pages that load but say \"no longer available\") and links that **redirect to the homepage**.\n3. A Data Table remembers every issue, so you're only asked about new ones, and you're told when a link works again.\n4. For each new broken link, Slack asks what to do. Choose **Replace link** and enter the new URL to rewrite it in every description and comment where it appears, or **Ignore this link** to stop alerts. No answer within 7 days? You're asked again the next week.\n5. A weekly email lists every open issue.\n\n### Setup\n1. Create a Data Table named **YouTube Link Issues** with the text columns `url`, `status`, `reason` and `replacement`.\n2. Connect **YouTube OAuth2**, **Slack** and **SMTP** credentials.\n3. Fill in **Configuration**: uploads playlist ID (your channel ID with `UC` replaced by `UU`), sender and report emails, Slack channel ID.\n4. Publish the workflow, since fix requests run as separate executions of it.\n\n### Customization\n- Edit the soft-404 phrases in **Configuration**.\n- Change which status codes count as broken in **Classify Result**.\n\nOnly the first 100 comment threads per video are read, and translated descriptions keep the old link.\n\n\nBuilt by\n[![Cloud Labs](https://low-code-consultant.com/brand/n8n-strip.png#full-width)](https://low-code-consultant.com)",
+        "height": 864,
+        "width": 520
+      },
+      "id": "92f101a5-50f5-452a-9b62-0d5e5a8473c5",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Collect links\nYour settings, the links already tracked, and every link in your descriptions and in comments you posted, grouped by URL.",
+        "height": 416,
+        "width": 1952,
+        "color": 7
+      },
+      "id": "57c35f83-d02c-42de-b33b-80e05dc1a818",
+      "name": "Section: Collect links",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Check each link\nCatches errors, soft 404s and redirects to the homepage, then compares with known issues.",
+        "height": 256,
+        "width": 608,
+        "color": 7
+      },
+      "id": "fa914865-6917-455e-8475-591713613ba5",
+      "name": "Section: Check links",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Act on results\nLinks that work again are marked fixed and announced in Slack. New issues are recorded, and each new broken link gets a fix request. One weekly email lists every open issue.",
+        "height": 1168,
+        "width": 608,
+        "color": 7
+      },
+      "id": "af892ced-25a8-4a87-8d50-cbfc365ef5d8",
+      "name": "Section: Act on results",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Ask for a fix\nRuns once per new broken link and waits up to 7 days for an answer in Slack. Without a valid answer, it asks again next week.",
+        "height": 512,
+        "width": 832,
+        "color": 7
+      },
+      "id": "70215070-d6a8-43bc-ab67-59c70901c1ef",
+      "name": "Section: Ask for a fix",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 5. Rewrite the link\nReplaces the link in every description and comment, records the result and confirms in Slack.",
+        "height": 416,
+        "width": 1952,
+        "color": 7
+      },
+      "id": "d6962bbc-e918-4983-b719-45150f8e939b",
+      "name": "Section: Rewrite the link",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        864,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "YouTube Link Issues"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $('When Fix Is Requested').first().json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "status",
+              "id": "status",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "status": "unanswered"
+          }
+        },
+        "options": {}
+      },
+      "id": "77d164d0-9b64-43d1-9127-ecdd8fb1599b",
+      "name": "Ask Again Next Week",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "desc",
+              "name": "newDescription",
+              "type": "string",
+              "value": "={{ (() => {\nconst p = $('One Item per Place').item.json;\nconst pattern = new RegExp(p.oldUrl.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\") + \"(?=[.,;:!?)]*(?:[\\\\s<>\\\"'\\\\[\\\\]]|$))\", \"g\");\nreturn String($json.snippet?.description ?? \"\").replace(pattern, () => p.newUrl);\n})() }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "62c48777-4d3f-4c5c-b9c6-3cfa40010286",
+      "name": "Rewrite Description",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1792,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cid",
+              "name": "commentId",
+              "type": "string",
+              "value": "={{ $json.items?.[0]?.id ?? \"\" }}"
+            },
+            {
+              "id": "text",
+              "name": "newText",
+              "type": "string",
+              "value": "={{ (() => {\nconst p = $('One Item per Place').item.json;\nconst pattern = new RegExp(p.oldUrl.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\") + \"(?=[.,;:!?)]*(?:[\\\\s<>\\\"'\\\\[\\\\]]|$))\", \"g\");\nreturn String($json.items?.[0]?.snippet?.textOriginal ?? \"\").replace(pattern, () => p.newUrl);\n})() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "648b80e8-1cff-42ef-8a7d-61ae5190edc4",
+      "name": "Rewrite Comment",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1792,
+        1184
+      ]
+    }
+  ],
+  "connections": {
+    "Every Monday 8am": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Load Known Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Known Links": {
+      "main": [
+        [
+          {
+            "node": "List Channel Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Channel Uploads": {
+      "main": [
+        [
+          {
+            "node": "Extract Description Links",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Channel Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Description Links": {
+      "main": [
+        [
+          {
+            "node": "Merge Link Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Link Sources": {
+      "main": [
+        [
+          {
+            "node": "One Item per Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Channel Comments": {
+      "main": [
+        [
+          {
+            "node": "Extract Comment Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Comment Links": {
+      "main": [
+        [
+          {
+            "node": "One Item per Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Item per Comment": {
+      "main": [
+        [
+          {
+            "node": "Merge Link Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "One Item per Link": {
+      "main": [
+        [
+          {
+            "node": "Group Places by URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Places by URL": {
+      "main": [
+        [
+          {
+            "node": "Check Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Link": {
+      "main": [
+        [
+          {
+            "node": "Classify Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Result": {
+      "main": [
+        [
+          {
+            "node": "Route Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Results": {
+      "main": [
+        [
+          {
+            "node": "Mark as Fixed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Collect Recovered Links",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record Issue",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Only Broken Links",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect Open Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Recovered Links": {
+      "main": [
+        [
+          {
+            "node": "Announce Recovered Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Fix Request": {
+      "main": [
+        [
+          {
+            "node": "Start Fix Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Open Issues": {
+      "main": [
+        [
+          {
+            "node": "Build Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Report Email": {
+      "main": [
+        [
+          {
+            "node": "Send Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Fix Is Requested": {
+      "main": [
+        [
+          {
+            "node": "Ask for Fix in Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask for Fix in Slack": {
+      "main": [
+        [
+          {
+            "node": "Route Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Decision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Replacements",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Ignored",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask Again Next Week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Replacements": {
+      "main": [
+        [
+          {
+            "node": "One Item per Place",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Item per Place": {
+      "main": [
+        [
+          {
+            "node": "Description or Comment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Description or Comment?": {
+      "main": [
+        [
+          {
+            "node": "Get Video Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Video Description": {
+      "main": [
+        [
+          {
+            "node": "Merge Update Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Update Results": {
+      "main": [
+        [
+          {
+            "node": "Summarize Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Comment": {
+      "main": [
+        [
+          {
+            "node": "Merge Update Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Summarize Results": {
+      "main": [
+        [
+          {
+            "node": "Record Fix",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Confirm Fix in Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only Broken Links": {
+      "main": [
+        [
+          {
+            "node": "Prepare Fix Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video Details": {
+      "main": [
+        [
+          {
+            "node": "Rewrite Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite Description": {
+      "main": [
+        [
+          {
+            "node": "Update Video Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Comment": {
+      "main": [
+        [
+          {
+            "node": "Rewrite Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite Comment": {
+      "main": [
+        [
+          {
+            "node": "Update Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {}
+}
